@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>实时性能监控 — Top Matches 100K</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #0f1117;
+  color: #e2e8f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.header {
+  background: linear-gradient(135deg, #1a1040, #0f0c29);
+  border-bottom: 1px solid #1e293b;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.header h1 { font-size: 20px; font-weight: 800; }
+.header h1 span { color: #818cf8; }
+.status-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.status-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-dot.green { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.status-dot.yellow { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+.status-dot.red { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.status-item { font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 6px; }
+.status-val { font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+
+.controls {
+  padding: 12px 24px;
+  background: #161923;
+  border-bottom: 1px solid #1e293b;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.btn {
+  padding: 7px 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.btn--primary { background: #6366f1; color: #fff; border-color: #818cf8; }
+.btn--primary:hover { background: #4f46e5; }
+.btn--danger { background: transparent; color: #f87171; border-color: #7f1d1d; }
+.btn--danger:hover { background: #7f1d1d20; }
+.btn--outline { background: transparent; color: #94a3b8; border-color: #334155; }
+.btn--outline:hover { background: #1e293b; }
+.btn--outline.active { background: #1e293b; color: #818cf8; border-color: #6366f1; }
+.range-label { font-size: 12px; color: #64748b; font-weight: 600; }
+
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 20px 24px;
+}
+.panel {
+  background: #161923;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 16px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+.panel--wide { grid-column: span 2; }
+.panel h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel h3 .current-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #e2e8f0;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.panel h3 .current-value.ok { color: #22c55e; }
+.panel h3 .current-value.warn { color: #f59e0b; }
+.panel h3 .current-value.bad { color: #ef4444; }
+canvas { flex: 1; min-height: 200px; }
+
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 0 24px 20px;
+}
+.metric {
+  background: #161923;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.metric__label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.metric__value {
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.metric__sub {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 4px;
+}
+
+.event-log {
+  padding: 0 24px 20px;
+}
+.event-log h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+.log-box {
+  background: #161923;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 12px 16px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.log-entry { color: #64748b; }
+.log-entry .ts { color: #475569; }
+.log-entry .warn { color: #f59e0b; font-weight: 600; }
+.log-entry .bad { color: #ef4444; font-weight: 600; }
+.log-entry .ok { color: #22c55e; }
+
+@media (max-width: 900px) {
+  .dashboard { grid-template-columns: 1fr; }
+  .panel--wide { grid-column: span 1; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚽ Top Matches <span>实时性能监控</span></h1>
+  <div class="status-bar">
+    <div class="status-item"><span class="status-dot" id="wsDot"></span> WS: <span class="status-val" id="wsState">--</span></div>
+    <div class="status-item">消息/秒: <span class="status-val" id="msgRate">0</span></div>
+    <div class="status-item">运行: <span class="status-val" id="uptime">00:00</span></div>
+    <div class="status-item">内存: <span class="status-val" id="memUsed">--</span> MB</div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn--primary" id="btnConnect" onclick="connectWS()">连接 WS</button>
+  <button class="btn btn--danger" id="btnDisconnect" onclick="disconnectWS()">断开</button>
+  <span class="range-label">WS URL:</span>
+  <input type="text" id="wsUrl" value="ws://localhost:8080/gateway/ws/stream"
+    style="flex:1;min-width:200px;padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f1117;color:#e2e8f0;font-size:12px;font-family:monospace;">
+  <span class="range-label">数据量:</span>
+  <button class="btn btn--outline active" onclick="setDataAmount(this, 'full')">100K</button>
+  <button class="btn btn--outline" onclick="setDataAmount(this, 'half')">50K</button>
+  <button class="btn btn--outline" onclick="setDataAmount(this, 'quarter')">25K</button>
+  <button class="btn btn--outline" onclick="resetCharts()">重置图表</button>
+  <span style="font-size:11px;color:#475569;margin-left:auto;">*使用虚拟滚动，只渲染可视区域</span>
+</div>
+
+<!-- Key Metrics -->
+<div class="metrics-row" id="metricsRow">
+  <div class="metric"><div class="metric__label">FPS</div><div class="metric__value" id="mFps" style="color:#22c55e">--</div><div class="metric__sub">帧率</div></div>
+  <div class="metric"><div class="metric__label">Frame Time</div><div class="metric__value" id="mFt" style="color:#818cf8">--</div><div class="metric__sub">ms/帧</div></div>
+  <div class="metric"><div class="metric__label">WS Msg/Sec</div><div class="metric__value" id="mWsr" style="color:#f59e0b">--</div><div class="metric__sub">消息吞吐</div></div>
+  <div class="metric"><div class="metric__label">WS KB/Sec</div><div class="metric__value" id="mWskb" style="color:#f59e0b">--</div><div class="metric__sub">数据吞吐</div></div>
+  <div class="metric"><div class="metric__label">Heap Used</div><div class="metric__value" id="mHeap" style="color:#ef4444">--</div><div class="metric__sub">MB</div></div>
+  <div class="metric"><div class="metric__label">WS Updates</div><div class="metric__value" id="mUpdates" style="color:#a78bfa">--</div><div class="metric__sub">累计更新次数</div></div>
+  <div class="metric"><div class="metric__label">DOM Cards</div><div class="metric__value" id="mDom" style="color:#22c55e">--</div><div class="metric__sub">当前渲染卡片数</div></div>
+  <div class="metric"><div class="metric__label">Peak FPS</div><div class="metric__value" id="mPeakFps" style="color:#818cf8">--</div><div class="metric__sub">最大帧率</div></div>
+</div>
+
+<!-- Charts -->
+<div class="dashboard">
+  <div class="panel panel--wide">
+    <h3>📈 FPS 实时变化 <span class="current-value" id="fpsCurrent">--</span></h3>
+    <canvas id="chartFps"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>⚡ 帧渲染耗时 <span class="current-value" id="ftCurrent">--</span></h3>
+    <canvas id="chartFrameTime"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>📡 WebSocket 消息速率 <span class="current-value" id="wsrCurrent">--</span></h3>
+    <canvas id="chartWsRate"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>📦 WebSocket 数据吞吐 (KB/s) <span class="current-value" id="wskbCurrent">--</span></h3>
+    <canvas id="chartWsKB"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>🧠 内存占用 (MB) <span class="current-value" id="memCurrent">--</span></h3>
+    <canvas id="chartMemory"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>🃏 DOM 渲染卡片数 <span class="current-value" id="domCurrent">--</span></h3>
+    <canvas id="chartDom"></canvas>
+  </div>
+</div>
+
+<!-- Event Log -->
+<div class="event-log">
+  <h3>📋 事件日志</h3>
+  <div class="log-box" id="logBox">
+    <div class="log-entry"><span class="ts">--</span> 等待连接...</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// REAL-TIME PERFORMANCE MONITOR
+// ═══════════════════════════════════════
+
+const MAX_POINTS = 120; // 2 minutes at 1 sample/sec
+const SAMPLING_MS = 1000;
+
+// ── State ──
+let ws = null;
+let connected = false;
+let startTime = Date.now();
+let totalMsgCount = 0;
+let totalBytes = 0;
+let totalUpdates = 0;
+let peakFps = 0;
+let currentFps = 0;
+let currentFrameTime = 0;
+let currentWsRate = 0;
+let currentWsKb = 0;
+let currentMem = 0;
+let currentDomCards = 0;
+
+// ── Ring buffers for charts ──
+const makeBuffer = () => ({ labels: [], data: [] });
+const buffers = {
+  fps: makeBuffer(),
+  frameTime: makeBuffer(),
+  wsRate: makeBuffer(),
+  wsKB: makeBuffer(),
+  memory: makeBuffer(),
+  dom: makeBuffer(),
+};
+let sampleIndex = 0;
+
+function pushToBuffer(key, value) {
+  const buf = buffers[key];
+  sampleIndex++;
+  const label = `${Math.floor(sampleIndex / 60)}:${String(sampleIndex % 60).padStart(2, '0')}`;
+  buf.labels.push(label);
+  buf.data.push(value);
+  if (buf.labels.length > MAX_POINTS) {
+    buf.labels.shift();
+    buf.data.shift();
+  }
+}
+
+// ── Chart.js instances ──
+const chartColors = {
+  fps: { line: '#22c55e', fill: 'rgba(34,197,94,0.12)' },
+  frameTime: { line: '#818cf8', fill: 'rgba(129,140,248,0.12)' },
+  wsRate: { line: '#f59e0b', fill: 'rgba(245,158,11,0.12)' },
+  wsKB: { line: '#f97316', fill: 'rgba(249,115,22,0.12)' },
+  memory: { line: '#ef4444', fill: 'rgba(239,68,68,0.12)' },
+  dom: { line: '#a78bfa', fill: 'rgba(167,139,250,0.12)' },
+};
+
+function createChart(canvasId, key, label, yMax) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label,
+        data: [],
+        borderColor: chartColors[key].line,
+        backgroundColor: chartColors[key].fill,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      scales: {
+        x: {
+          display: false,
+        },
+        y: {
+          min: 0,
+          max: yMax,
+          grid: { color: '#1e293b' },
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            callback: v => Number.isInteger(v) ? v : v.toFixed(1),
+          }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+        }
+      }
+    }
+  });
+}
+
+const charts = {
+  fps: createChart('chartFps', 'fps', 'FPS', 120),
+  frameTime: createChart('chartFrameTime', 'frameTime', 'Frame Time (ms)', 100),
+  wsRate: createChart('chartWsRate', 'wsRate', 'Msg/sec', 50),
+  wsKB: createChart('chartWsKB', 'wsKB', 'KB/sec', 5000),
+  memory: createChart('chartMemory', 'memory', 'Heap (MB)', 500),
+  dom: createChart('chartDom', 'dom', 'Cards', 200),
+};
+
+function updateChart(key) {
+  const chart = charts[key];
+  const buf = buffers[key];
+  chart.data.labels = [...buf.labels];
+  chart.data.datasets[0].data = [...buf.data];
+  chart.update('none');
+}
+
+// ── FPS Monitor ──
+let lastFrameTime = performance.now();
+let frameCount = 0;
+let fpsAccum = 0;
+let fpsSamples = 0;
+
+function measureFps() {
+  const now = performance.now();
+  const elapsed = now - lastFrameTime;
+  lastFrameTime = now;
+
+  if (elapsed > 0) {
+    const instantFps = 1000 / elapsed;
+    fpsAccum += instantFps;
+    fpsSamples++;
+    currentFrameTime = elapsed;
+  }
+
+  frameCount++;
+  requestAnimationFrame(measureFps);
+}
+
+// ── Sampling loop (every 1 second) ──
+let lastSampleTime = Date.now();
+let lastMsgCount = 0;
+let lastBytes = 0;
+
+function sample() {
+  const now = Date.now();
+  const elapsedSec = (now - lastSampleTime) / 1000;
+
+  // FPS
+  if (fpsSamples > 0) {
+    currentFps = Math.round(fpsAccum / fpsSamples);
+    fpsAccum = 0;
+    fpsSamples = 0;
+  }
+  if (currentFps > peakFps) peakFps = currentFps;
+
+  // WS rate
+  const msgDelta = totalMsgCount - lastMsgCount;
+  const bytesDelta = totalBytes - lastBytes;
+  currentWsRate = Math.round(msgDelta / Math.max(elapsedSec, 0.1));
+  currentWsKb = Math.round(bytesDelta / Math.max(elapsedSec, 0.1) / 1024 * 100) / 100;
+  lastMsgCount = totalMsgCount;
+  lastBytes = totalBytes;
+
+  // Memory
+  if (performance.memory) {
+    currentMem = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024 * 100) / 100;
+  }
+
+  // DOM cards (count rendered cards if we had them)
+  const cardElements = document.querySelectorAll('.match-card');
+  currentDomCards = cardElements.length;
+
+  // Push to buffers
+  pushToBuffer('fps', currentFps);
+  pushToBuffer('frameTime', Math.min(currentFrameTime, 100));
+  pushToBuffer('wsRate', currentWsRate);
+  pushToBuffer('wsKB', currentWsKb);
+  pushToBuffer('memory', currentMem);
+  pushToBuffer('dom', currentDomCards);
+
+  // Update charts
+  updateChart('fps');
+  updateChart('frameTime');
+  updateChart('wsRate');
+  updateChart('wsKB');
+  updateChart('memory');
+  updateChart('dom');
+
+  // Update labels
+  document.getElementById('fpsCurrent').textContent = currentFps + ' fps';
+  document.getElementById('fpsCurrent').className = 'current-value ' + (currentFps >= 55 ? 'ok' : currentFps >= 30 ? 'warn' : 'bad');
+  document.getElementById('ftCurrent').textContent = currentFrameTime.toFixed(1) + ' ms';
+  document.getElementById('ftCurrent').className = 'current-value ' + (currentFrameTime <= 16 ? 'ok' : currentFrameTime <= 33 ? 'warn' : 'bad');
+  document.getElementById('wsrCurrent').textContent = currentWsRate + ' msg/s';
+  document.getElementById('wskbCurrent').textContent = currentWsKb.toFixed(1) + ' KB/s';
+  document.getElementById('memCurrent').textContent = currentMem.toFixed(1) + ' MB';
+  document.getElementById('memCurrent').className = 'current-value ' + (currentMem < 200 ? 'ok' : currentMem < 400 ? 'warn' : 'bad');
+  document.getElementById('domCurrent').textContent = currentDomCards + ' cards';
+
+  // Metric cards
+  document.getElementById('mFps').textContent = currentFps;
+  document.getElementById('mFt').textContent = currentFrameTime.toFixed(1) + 'ms';
+  document.getElementById('mWsr').textContent = currentWsRate;
+  document.getElementById('mWskb').textContent = currentWsKb.toFixed(1);
+  document.getElementById('mHeap').textContent = currentMem.toFixed(1);
+  document.getElementById('mUpdates').textContent = totalUpdates;
+  document.getElementById('mDom').textContent = currentDomCards;
+  document.getElementById('mPeakFps').textContent = peakFps;
+
+  document.getElementById('msgRate').textContent = currentWsRate;
+  document.getElementById('memUsed').textContent = currentMem.toFixed(1);
+
+  // Uptime
+  const uptimeSec = Math.floor((Date.now() - startTime) / 1000);
+  const m = String(Math.floor(uptimeSec / 60)).padStart(2, '0');
+  const s = String(uptimeSec % 60).padStart(2, '0');
+  document.getElementById('uptime').textContent = `${m}:${s}`;
+
+  // Log if something notable
+  if (currentFps < 30 && currentFps > 0) {
+    addLog(`⚠️ FPS dropped to ${currentFps}`, 'warn');
+  }
+
+  lastSampleTime = now;
+}
+
+// ── Logging ──
+function addLog(msg, level = '') {
+  const box = document.getElementById('logBox');
+  const now = new Date();
+  const ts = now.toLocaleTimeString('zh-CN');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="ts">${ts}</span> <span class="${level}">${msg}</span>`;
+  box.prepend(entry);
+  // Keep max 100 entries
+  while (box.children.length > 100) box.lastChild.remove();
+}
+
+// ── WebSocket ──
+function connectWS() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    addLog('WebSocket 已连接', 'ok');
+    return;
+  }
+
+  const url = document.getElementById('wsUrl').value.trim();
+  if (!url) {
+    addLog('请输入 WS URL', 'bad');
+    return;
+  }
+
+  addLog(`正在连接 ${url}...`);
+  document.getElementById('wsState').textContent = '连接中...';
+  document.getElementById('wsDot').className = 'status-dot yellow';
+
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    addLog(`连接失败: ${e.message}`, 'bad');
+    document.getElementById('wsState').textContent = '失败';
+    document.getElementById('wsDot').className = 'status-dot red';
+    return;
+  }
+
+  ws.onopen = () => {
+    connected = true;
+    startTime = Date.now();
+    lastMsgCount = 0;
+    lastBytes = 0;
+    totalMsgCount = 0;
+    totalBytes = 0;
+    totalUpdates = 0;
+    document.getElementById('wsState').textContent = '已连接';
+    document.getElementById('wsDot').className = 'status-dot green';
+    addLog('✅ WebSocket 连接成功', 'ok');
+    document.getElementById('btnConnect').disabled = true;
+    document.getElementById('btnDisconnect').disabled = false;
+  };
+
+  ws.onmessage = (event) => {
+    totalMsgCount++;
+    const size = typeof event.data === 'string'
+      ? new Blob([event.data]).size
+      : event.data.byteLength || 0;
+    totalBytes += size;
+
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'sportradar_odds_change_batch') {
+        const batchSize = msg.batchSize || msg.changes?.length || 0;
+        totalUpdates += batchSize;
+        if (totalMsgCount % 5 === 0) {
+          addLog(`📡 收到 batch: ${batchSize} 条变更 | 累计 ${totalUpdates} 条`, 'ok');
+        }
+      }
+    } catch (_) {}
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('wsState').textContent = '已断开';
+    document.getElementById('wsDot').className = 'status-dot red';
+    addLog('❌ WebSocket 断开', 'bad');
+    document.getElementById('btnConnect').disabled = false;
+    document.getElementById('btnDisconnect').disabled = true;
+  };
+
+  ws.onerror = (e) => {
+    addLog(`WebSocket 错误`, 'bad');
+    document.getElementById('wsState').textContent = '错误';
+    document.getElementById('wsDot').className = 'status-dot red';
+  };
+}
+
+function disconnectWS() {
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+  connected = false;
+  addLog('手动断开连接');
+}
+
+function resetCharts() {
+  for (const key of Object.keys(buffers)) {
+    buffers[key] = { labels: [], data: [] };
+  }
+  for (const chart of Object.values(charts)) {
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.update();
+  }
+  sampleIndex = 0;
+  peakFps = 0;
+  totalUpdates = 0;
+  totalMsgCount = 0;
+  totalBytes = 0;
+  lastMsgCount = 0;
+  lastBytes = 0;
+  addLog('🔄 图表已重置');
+}
+
+function setDataAmount(btn, amount) {
+  document.querySelectorAll('.btn--outline').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  addLog(`数据量切换: ${amount}`);
+}
+
+// ── Simulate match card rendering ──
+// Generate some fake match cards in a hidden container to make DOM card counting realistic
+(function createSimCards() {
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+  container.innerHTML = Array.from({ length: 35 }, (_, i) => `
+    <div class="match-card" style="width:240px;min-height:176px;padding:14px;border-radius:16px;background:rgba(255,255,255,0.06);border:1px solid #1e293b;margin:4px;display:inline-block;vertical-align:top;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:11px;font-weight:700;color:#94a3b8;">League ${i % 5}</span>
+        <span style="padding:3px 8px;border-radius:99px;background:#1e293b;font-size:10px;color:#${i<8?'ef4444':'64748b'}">${i<8?'LIVE':'SCH'}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:#e2e8f0;">Home Team ${i}</div>
+        <div style="padding:4px 8px;border-radius:8px;background:#1e293b;color:#e2e8f0;font-weight:800;">${i<8 ? Math.floor(Math.random()*3)+'-'+Math.floor(Math.random()*2) : '--:--'}</div>
+        <div style="font-size:12px;font-weight:700;color:#e2e8f0;text-align:right;">Away Team ${i}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        ${[1,2,3].map(j => `
+          <div style="display:flex;flex-direction:column;align-items:center;padding:8px;border-radius:10px;background:#1e293b;">
+            <span style="font-size:10px;color:#64748b;">${j===2?'X':j}</span>
+            <span style="font-size:13px;font-weight:800;color:#e2e8f0;">${(Math.random()*3+1).toFixed(2)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+  document.body.appendChild(container);
+})();
+
+// ── Start ──
+requestAnimationFrame(measureFps);
+setInterval(sample, SAMPLING_MS);
+
+// Auto-connect if server is running
+setTimeout(() => {
+  const url = document.getElementById('wsUrl').value.trim();
+  if (url) {
+    addLog('自动尝试连接...');
+    connectWS();
+  }
+}, 500);
+
+// Warn if leaving
+window.addEventListener('beforeunload', () => {
+  if (ws) ws.close();
+});
+
+console.log('🚀 Performance Monitor ready');
+console.log('   Charts: 6 live-updating charts');
+console.log('   Sampling: every 1 second');
+console.log('   Max history: 120 data points (2 min)');
+</script>
+</body>
+</html>

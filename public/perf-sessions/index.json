@@ -1,0 +1,16 @@
+[
+  {
+    "sessionId": "session-2026-06-24T17-33-33-320Z-vmqo4o",
+    "startedAt": "2026-06-24T17:33:33.320Z",
+    "endedAt": "2026-06-24T17:37:36.962Z",
+    "durationSec": 244,
+    "archiveFile": "/perf-sessions/session-2026-06-24T17-33-33-320Z-vmqo4o.json"
+  },
+  {
+    "sessionId": "session-2026-06-24T17-04-56-331Z-eh4d2y",
+    "startedAt": "2026-06-24T17:04:56.331Z",
+    "endedAt": "2026-06-24T17:11:48.298Z",
+    "durationSec": 412,
+    "archiveFile": "/perf-sessions/session-2026-06-24T17-04-56-331Z-eh4d2y.json"
+  }
+]
