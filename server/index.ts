@@ -1,11 +1,28 @@
 import Koa from "koa";
 import Router from "@koa/router";
 import { createServer } from "http";
+import { createReadStream, existsSync } from "node:fs";
+import { dirname, extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getTopMatchesResponse } from "./data";
 import { createWsManager } from "./wsManager";
 import { PerfSessionStore, type FrontendPerfSampleInput } from "./perfSessionStore";
 
-const PORT = parseInt(process.env.SERVER_PORT || "8080", 10);
+const PORT = parseInt(process.env.PORT || process.env.SERVER_PORT || "8080", 10);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(__dirname, "..");
+const distDir = join(projectRoot, "dist");
+const indexFile = join(distDir, "index.html");
+const STATIC_FILE_HEADERS: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
 
 const app = new Koa();
 const router = new Router();
@@ -41,6 +58,37 @@ router.post("/gateway/api/perf-session/frontend-sample", async (ctx) => {
   }
 });
 
+app.use(async (ctx, next) => {
+  if (ctx.method !== "GET" && ctx.method !== "HEAD") {
+    await next();
+    return;
+  }
+
+  if (ctx.path.startsWith("/gateway/")) {
+    await next();
+    return;
+  }
+
+  const cleanedPath = ctx.path === "/" ? "index.html" : ctx.path.replace(/^\/+/, "");
+  const relativePath = normalize(cleanedPath).replace(/^(\.\.[/\\])+/, "");
+  const assetPath = join(distDir, relativePath);
+
+  if (existsSync(assetPath)) {
+    const mimeType = STATIC_FILE_HEADERS[extname(assetPath)] ?? "application/octet-stream";
+    ctx.type = mimeType;
+    ctx.body = createReadStream(assetPath);
+    return;
+  }
+
+  if (!existsSync(indexFile)) {
+    await next();
+    return;
+  }
+
+  ctx.type = "text/html; charset=utf-8";
+  ctx.body = createReadStream(indexFile);
+});
+
 app.use(router.routes());
 app.use(router.allowedMethods());
 
@@ -74,4 +122,5 @@ httpServer.listen(PORT, () => {
   console.log(`\n🚀 Server running at http://localhost:${PORT}`);
   console.log(`   REST API:  http://localhost:${PORT}/gateway/api/sportradar/v1/uof/top-matches`);
   console.log(`   WebSocket: ws://localhost:${PORT}/gateway/ws/stream\n`);
+  console.log(`   Static UI: ${existsSync(indexFile) ? `http://localhost:${PORT}/` : "dist/ not found; run `pnpm build` first"}\n`);
 });

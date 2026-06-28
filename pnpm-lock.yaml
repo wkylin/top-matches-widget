@@ -8,16 +8,25 @@ importers:
 
   .:
     dependencies:
-      chart.js:
-        specifier: ^4.5.1
-        version: 4.5.1
-      vue:
-        specifier: ^3.5.13
-        version: 3.5.38(typescript@5.9.3)
-    devDependencies:
       '@koa/router':
         specifier: ^15.6.0
         version: 15.6.0(koa@3.2.1)
+      chart.js:
+        specifier: ^4.5.1
+        version: 4.5.1
+      koa:
+        specifier: ^3.2.1
+        version: 3.2.1
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      vue:
+        specifier: ^3.5.13
+        version: 3.5.38(typescript@5.9.3)
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
+    devDependencies:
       '@types/koa':
         specifier: ^3.0.3
         version: 3.0.3
@@ -36,12 +45,6 @@ importers:
       concurrently:
         specifier: ^10.0.3
         version: 10.0.3
-      koa:
-        specifier: ^3.2.1
-        version: 3.2.1
-      tsx:
-        specifier: ^4.22.4
-        version: 4.22.4
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -51,9 +54,6 @@ importers:
       vue-tsc:
         specifier: ^2.2.8
         version: 2.2.12(typescript@5.9.3)
-      ws:
-        specifier: ^8.21.0
-        version: 8.21.0
 
 packages:
 

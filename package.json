@@ -10,26 +10,27 @@
     "benchmark": "node scripts/benchmark.mjs",
     "dev:all:bench": "pnpm benchmark && pnpm dev:all",
     "build": "vue-tsc --noEmit && vite build",
+    "start": "node --import tsx server/index.ts",
     "preview": "vite preview",
     "type:check": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@koa/router": "^15.6.0",
     "chart.js": "^4.5.1",
-    "vue": "^3.5.13"
+    "koa": "^3.2.1",
+    "tsx": "^4.22.4",
+    "vue": "^3.5.13",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@koa/router": "^15.6.0",
     "@types/koa": "^3.0.3",
     "@types/koa__router": "^12.0.5",
     "@types/node": "^26.0.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^5.2.3",
     "concurrently": "^10.0.3",
-    "koa": "^3.2.1",
-    "tsx": "^4.22.4",
     "typescript": "^5.8.3",
     "vite": "^6.3.1",
-    "vue-tsc": "^2.2.8",
-    "ws": "^8.21.0"
+    "vue-tsc": "^2.2.8"
   }
 }
